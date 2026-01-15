@@ -1,105 +1,90 @@
-/* Project: ForestAR (Tugas Akhir AR/VR)
-  Author: Peno (ElHalc8n) - NIM 221220095
-  Description: Edukasi Banjir & Longsor berbasis WebAR
+/* Project: ForestAR (UAS Final Polish)
+  Author: Peno (221220095)
 */
 
-// --- VARIABEL GLOBAL ---
-let modelHijau, modelGundul; // Wadah untuk aset 3D
-let currentModel;            // Model yang sedang aktif
-let fontRegular;             // Font (opsional)
+let modelHijau, modelGundul;
+let currentModel;
+let bgmSound;
 
-// Variabel Status
-let gameState = 'HOME';      // 'HOME' atau 'AR'
-let isRaining = false;       // Status hujan
-let rainDrops = [];          // Array untuk partikel hujan
-let pesanEdukasi = "";       // Teks untuk panel bawah
+// Status Game
+let gameState = 'HOME';
+let isRaining = false;
+let rainDrops = [];
+let pesanEdukasi = "";
 
-// Elemen UI (HTML DOM)
+// UI Elements
 let btnMulai;
 let btnHijau, btnGundul, btnHujan, btnReset;
 let panelPenjelasan;
 
-// --- 1. PRELOAD ASSETS ---
 function preload() {
-  // Ganti nama file ini sesuai aset yang kamu download nanti
-  // Pastikan file .obj dan .mtl (atau .glb) ada di folder 'assets'
   try {
+    // Pastikan path assets benar (Huruf Besar/Kecil berpengaruh di hosting!)
+    // saran: rename file asli jadi huruf kecil semua (part.obj)
     modelHijau = loadModel('assets/part.obj', true);
     modelGundul = loadModel('assets/part.obj', true);
+    
+    soundFormats('mp3', 'ogg');
+    bgmSound = loadSound('assets/bgm.mp3'); 
   } catch (e) {
-    console.log("Aset belum ada, menggunakan placeholder kotak dulu.");
+    console.log("Error loading assets");
   }
 }
 
-// --- 2. SETUP ---
 function setup() {
   createCanvas(windowWidth, windowHeight, WEBGL);
   
-  // Setup Font & Style
-  textFont('Arial');
-  textSize(16);
+  // Matikan loading screen HTML setelah setup selesai
+  select('#loading').style('display', 'none');
 
-  // --- MEMBUAT UI (Sesuai Sketsa) ---
+  // --- UI SETUP DENGAN CSS CLASS ---
   
-  // A. Tombol Start (Halaman Depan)
-  btnMulai = createButton('Mulai AR');
-  styleButton(btnMulai);
-  btnMulai.position(windowWidth/2 - 60, windowHeight - 100);
-  btnMulai.mousePressed(() => {
-    gameState = 'AR';
-    hideHomeUI();
-    showARUI();
-  });
+  // 1. Tombol MULAI (Tengah)
+  btnMulai = createButton('Mulai ForestAR');
+  btnMulai.class('btn-primary'); // Panggil class CSS
+  btnMulai.position(windowWidth/2 - 90, windowHeight/2 - 25);
+  btnMulai.mousePressed(startGame);
 
-  // B. Tombol Mode (Kiri Atas)
-  btnHijau = createButton('Gunung Hijau');
-  styleButtonSmall(btnHijau);
+  // 2. Tombol Kiri (Pilihan Gunung)
+  btnHijau = createButton('🌲 Hutan Hijau');
+  btnHijau.class('btn-mode');
   btnHijau.position(20, 20);
   btnHijau.mousePressed(() => setMode('HIJAU'));
 
-  btnGundul = createButton('Gunung Gundul');
-  styleButtonSmall(btnGundul);
-  btnGundul.position(20, 60);
+  btnGundul = createButton('🪓 Hutan Gundul');
+  btnGundul.class('btn-mode');
+  btnGundul.position(20, 70); // Jarak diperlebar dikit
   btnGundul.mousePressed(() => setMode('GUNDUL'));
 
-  // C. Tombol Aksi (Kanan Atas)
-  btnHujan = createButton('Hujan');
-  styleButtonSmall(btnHujan);
-  btnHujan.position(windowWidth - 100, 20);
-  btnHujan.mousePressed(() => { isRaining = !isRaining; });
+  // 3. Tombol Kanan (Aksi)
+  btnHujan = createButton('🌧️ Hujan');
+  btnHujan.class('btn-mode');
+  btnHujan.position(windowWidth - 100, 20); // Sesuaikan lebar tombol
+  btnHujan.mousePressed(toggleRain);
 
-  btnReset = createButton('Reset');
-  styleButtonSmall(btnReset);
-  btnReset.position(windowWidth - 100, 60);
-  btnReset.mousePressed(() => { 
-    // Reset posisi kamera atau model (sederhana)
-    camera(0, 0, (height/2) / tan(PI/6), 0, 0, 0, 0, 1, 0);
-  });
+  btnReset = createButton('🔄 Reset');
+  btnReset.class('btn-mode');
+  btnReset.position(windowWidth - 100, 70);
+  btnReset.mousePressed(resetCamera);
 
-  // D. Panel Penjelasan (Bawah)
-  panelPenjelasan = createDiv('<h4>Penjelasan</h4><p id="teks-info">Siap memulai.</p>');
-  panelPenjelasan.style('background', 'white');
-  panelPenjelasan.style('border-radius', '15px');
-  panelPenjelasan.style('padding', '10px');
-  panelPenjelasan.style('position', 'absolute');
-  panelPenjelasan.style('bottom', '20px');
-  panelPenjelasan.style('left', '20px');
-  panelPenjelasan.style('right', '20px');
-  panelPenjelasan.style('font-family', 'sans-serif');
-  panelPenjelasan.style('box-shadow', '0px -2px 10px rgba(0,0,0,0.1)');
-  
-  // Inisialisasi awal UI: Sembunyikan UI AR, Tampilkan UI Home
+  // 4. Panel Bawah
+  panelPenjelasan = createDiv('<h4>Siap Belajar?</h4><p id="teks-info">Arahkan kamera ke meja.</p>');
+  panelPenjelasan.class('info-panel');
+  panelPenjelasan.position(20, windowHeight - 120); // Posisi fix di bawah
+  panelPenjelasan.size(windowWidth - 80); // Lebar responsif
+
+  // Sembunyikan UI AR dulu
   hideARUI();
   
-  // Set default model
-  currentModel = modelHijau; 
-  pesanEdukasi = "Arahkan kamera ke meja untuk melihat gunung.";
+  currentModel = modelHijau;
 }
 
-// --- 3. DRAW LOOP ---
 function draw() {
-  background(255); // Background putih bersih (atau transparan jika AR aktif)
-  
+  // Background Transparan untuk WebAR
+  background(255); 
+  // Kalau mau transparan total (lihat kamera asli), ganti jadi: background(0,0);
+  // Tapi untuk test di laptop pakai putih dulu gapapa.
+
   if (gameState === 'HOME') {
     drawHomeScreen();
   } else if (gameState === 'AR') {
@@ -107,150 +92,147 @@ function draw() {
   }
 }
 
-// --- FUNGSI LAYAR ---
+// --- FUNGSI UTAMA ---
 
 function drawHomeScreen() {
-  // Tampilan 2D sederhana di kanvas WEBGL
+  // Teks Judul di Layar Awal
   push();
-  fill(0);
+  fill(50);
   noStroke();
   textAlign(CENTER);
-  text("ForestAR", 0, -50);
-  textSize(12);
-  text("Edukasi Banjir & Longsor", 0, -30);
+  textSize(28);
+  textStyle(BOLD);
+  text("ForestAR", 0, -80);
+  
+  textSize(14);
+  textStyle(NORMAL);
+  fill(100);
+  text("Edukasi Banjir & Longsor\nOleh: Peno (221220095)", 0, -40);
   pop();
 }
 
 function drawARScreen() {
-  // 1. Kontrol Orbit (Biar bisa diputar pakai mouse/touch saat testing)
-  orbitControl();
+  orbitControl(); // Biar bisa diputar pakai jari
 
-  // 2. Pencahayaan
-  ambientLight(150);
-  directionalLight(255, 255, 255, 0.5, 1, -1);
-
-  // 3. Render Model dengan Animasi Melayang
-  push();
-  let floatingY = sin(frameCount * 0.05) * 5; // Animasi naik turun halus
-  translate(0, floatingY, 0); 
+  // --- PERBAIKAN WARNA (FIXING WEIRD COLORS) ---
+  // Kita ganti lightingnya biar lebih netral
+  ambientLight(150); // Cahaya dasar (tidak terlalu gelap)
+  directionalLight(255, 255, 255, 0.5, 1, -1); // Cahaya matahari putih
   
-  rotateX(PI);
-  // Rotasi pelan
-  rotateY(frameCount * 0.005);
+  push();
+  // Animasi Melayang Halus
+  let floatingY = sin(frameCount * 0.03) * 5; 
+  translate(0, floatingY, 0);
+  rotateX(PI); // Membalik model
+  rotateY(frameCount * 0.005); // Rotasi otomatis pelan
   
   noStroke();
-  
-  // Cek apakah model sudah di-load, jika belum pakai Box/Sphere dulu
+
   if (currentModel) {
-    // Pewarnaan manual jika model tidak punya tekstur
-    if (currentModel === modelHijau) fill(34, 139, 34); // Hijau Hutan
-    else fill(139, 69, 19); // Coklat Tanah
+    // --- KUNCI WARNA ALAMI ---
+    // Jangan pakai specularMaterial() karena bikin silau/putih di hosting
+    // Pakai ambientMaterial() biar warnanya "doff" dan jelas
     
-    scale(2); // Sesuaikan skala modelmu nanti di sini
+    if (currentModel === modelHijau) {
+      ambientMaterial(34, 139, 34); // Hijau Daun Asli
+    } else {
+      ambientMaterial(139, 69, 19); // Coklat Tanah
+    }
+
+    scale(2.5);
     model(currentModel);
   } else {
-    // Placeholder jika aset belum ada
-    fill(200);
-    box(50); 
+    // Fallback kalau aset gagal load
+    ambientMaterial(200);
+    box(50);
   }
   pop();
 
-  // 4. Efek Hujan
-  if (isRaining) {
-    jalankanHujan();
-  }
+  if (isRaining) jalankanHujan();
 }
 
-// --- LOGIKA HUJAN ---
 function jalankanHujan() {
-  // Tambah partikel hujan baru
-  for (let i = 0; i < 5; i++) {
-    rainDrops.push({
-      x: random(-200, 200),
-      y: -300,
-      z: random(-200, 200),
-      speed: random(10, 20)
-    });
-  }
-
-  push();
-  stroke(100, 100, 255);
-  strokeWeight(2);
+  let rainCount = (currentModel === modelGundul) ? 10 : 5; // Gundul = Hujan deras
   
-  for (let i = rainDrops.length - 1; i >= 0; i--) {
-    let drop = rainDrops[i];
-    drop.y += drop.speed;
+  // Warna Hujan
+  if (currentModel === modelGundul) stroke(120, 100, 100); // Air keruh/coklat dikit
+  else stroke(100, 200, 255); // Air jernih
+  
+  strokeWeight(2);
+
+  for (let i = 0; i < rainCount; i++) {
+    let x = random(-200, 200);
+    let y = random(-300, 0);
+    let z = random(-200, 200);
+    let len = random(10, 20);
     
-    line(drop.x, drop.y, drop.z, drop.x, drop.y + 10, drop.z);
-    
-    // Hapus hujan jika sudah lewat bawah layar
-    if (drop.y > 300) {
-      rainDrops.splice(i, 1);
-    }
+    // Bikin efek hujan turun cepat
+    // Kita gambar banyak garis acak tiap frame tanpa simpan di array biar ringan
+    line(x, y, z, x, y + len, z);
   }
-  pop();
 }
 
-// --- LOGIKA INTERAKSI ---
+// --- LOGIKA TOMBOL ---
+
+function startGame() {
+  gameState = 'AR';
+  btnMulai.hide(); // Sembunyikan tombol mulai
+  showARUI(); // Munculkan UI AR
+  
+  // Play Music
+  if (bgmSound && bgmSound.isLoaded()) {
+    bgmSound.setVolume(0.5);
+    bgmSound.loop();
+  }
+}
 
 function setMode(mode) {
-  let infoText = select('#teks-info'); // Ambil elemen <p> di dalam panel
+  let infoText = select('#teks-info');
   
+  // Reset style tombol biar gak aktif dua-duanya
+  btnHijau.removeClass('btn-active');
+  btnGundul.removeClass('btn-active');
+
   if (mode === 'HIJAU') {
     currentModel = modelHijau;
-    pesanEdukasi = "Hutan utuh. Akar pohon menyerap air. Desa aman dari banjir.";
-    // Ubah style panel jadi hijau (aman)
-    panelPenjelasan.style('border-left', '5px solid green');
+    btnHijau.addClass('btn-active'); // Highlight tombol
+    pesanEdukasi = "<b>Kondisi Aman:</b><br>Akar pohon menyerap air hujan. Sungai jernih, desa terlindungi.";
+    panelPenjelasan.style('border-left', '8px solid #2ecc71'); // Garis Hijau
   } else {
     currentModel = modelGundul;
-    pesanEdukasi = "Hutan gundul! Air meluncur deras membawa tanah. AWAS LONGSOR!";
-    // Ubah style panel jadi merah (bahaya)
-    panelPenjelasan.style('border-left', '5px solid red');
+    btnGundul.addClass('btn-active'); // Highlight tombol
+    pesanEdukasi = "<b>BAHAYA!</b><br>Tanpa pohon, air membawa tanah (longsor). Banjir bandang menerjang desa!";
+    panelPenjelasan.style('border-left', '8px solid #e74c3c'); // Garis Merah
   }
-  
   infoText.html(pesanEdukasi);
 }
 
-// --- HELPER UI ---
+function toggleRain() {
+  isRaining = !isRaining;
+  if (isRaining) btnHujan.addClass('btn-active');
+  else btnHujan.removeClass('btn-active');
+}
 
-function hideHomeUI() {
-  btnMulai.hide();
+function resetCamera() {
+  camera(0, 0, (height/2) / tan(PI/6), 0, 0, 0, 0, 1, 0);
 }
 
 function hideARUI() {
-  btnHijau.hide();
-  btnGundul.hide();
-  btnHujan.hide();
-  btnReset.hide();
-  panelPenjelasan.hide();
+  btnHijau.hide(); btnGundul.hide(); btnHujan.hide(); btnReset.hide(); panelPenjelasan.hide();
 }
 
 function showARUI() {
-  btnHijau.show();
-  btnGundul.show();
-  btnHujan.show();
-  btnReset.show();
-  panelPenjelasan.show();
+  btnHijau.show(); btnGundul.show(); btnHujan.show(); btnReset.show(); panelPenjelasan.show();
+  // Set default state
+  setMode('HIJAU');
 }
 
-function styleButton(btn) {
-  btn.style('background-color', '#fff');
-  btn.style('border', '2px solid #000');
-  btn.style('border-radius', '20px');
-  btn.style('padding', '10px 30px');
-  btn.style('font-size', '16px');
-  btn.style('font-weight', 'bold');
-}
-
-function styleButtonSmall(btn) {
-  btn.style('background-color', '#fff');
-  btn.style('border', '1px solid #333');
-  btn.style('border-radius', '8px');
-  btn.style('padding', '5px 10px');
-  btn.style('font-size', '12px');
-}
-
-// Resize Canvas responsif
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
+  // Reposisi tombol saat layar diputar/resize
+  btnMulai.position(windowWidth/2 - 90, windowHeight/2 - 25);
+  btnHujan.position(windowWidth - 100, 20);
+  btnReset.position(windowWidth - 100, 70);
+  panelPenjelasan.position(20, windowHeight - 120);
+  panelPenjelasan.size(windowWidth - 80);
 }
